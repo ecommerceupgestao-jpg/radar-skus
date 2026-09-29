@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Radar de SKUs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: barra de filtros -> resumo -> leitura do analista -> análise do SKU -> abas de alerta -> tabela */
+:root{
+  --bg:#f5f6f8; --surface:#ffffff; --sunk:#eef0f4; --fg:#17202b; --muted:#5b6675; --line:#dde1e7; --accent:#1f4fd1; --accent-fg:#ffffff;
+  --crit:#c62828; --crit-bg:#fdecec; --warn:#b45f06; --warn-bg:#fdf1e2; --good:#1d7a46; --good-bg:#e5f4ea;
+  --info:#5b3fc4; --info-bg:#efebfb; --slow:#6b5e45; --slow-bg:#f2eee6; --bar:#1f4fd1; --bar2:#9db3ee;
+  --f-display:"Archivo",system-ui,sans-serif; --f-body:"Archivo",system-ui,sans-serif; --f-mono:"JetBrains Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f141b; --surface:#171e27; --sunk:#121820; --fg:#e7ebf0; --muted:#95a0ae; --line:#2a3440; --accent:#7ea2ff; --accent-fg:#0f141b;
+  --crit:#ff7a7a; --crit-bg:#3a1c1f; --warn:#f0a95a; --warn-bg:#382a18; --good:#6fd39a; --good-bg:#16301f;
+  --info:#b6a4ff; --info-bg:#262045; --slow:#cdbb95; --slow-bg:#2e2a22; --bar:#7ea2ff; --bar2:#3a4f86; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f141b; --surface:#171e27; --sunk:#121820; --fg:#e7ebf0; --muted:#95a0ae; --line:#2a3440; --accent:#7ea2ff; --accent-fg:#0f141b;
+  --crit:#ff7a7a; --crit-bg:#3a1c1f; --warn:#f0a95a; --warn-bg:#382a18; --good:#6fd39a; --good-bg:#16301f;
+  --info:#b6a4ff; --info-bg:#262045; --slow:#cdbb95; --slow-bg:#2e2a22; --bar:#7ea2ff; --bar2:#3a4f86; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.5}
+.wrap{max-width:1200px;margin:0 auto;padding-inline:16px;padding-block:24px 56px;display:flex;flex-direction:column;gap:20px}
+header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:end;gap:12px}
+h1{font-family:var(--f-display);font-weight:800;font-size:clamp(26px,4vw,36px);letter-spacing:-.02em;margin:0}
+h2{font-family:var(--f-display);font-size:20px;margin:0}
+.stamp{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.btn{font:inherit;font-weight:600;font-size:14px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:8px 14px;border-radius:8px;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.btn:disabled{opacity:.55;cursor:progress}
+.btn:focus-visible,.tab:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hdr-actions{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:4px;min-width:0}
+.msg{font-size:13px;color:var(--muted);max-width:52ch;text-align:right}
+.msg.err{color:var(--crit)}
+.filters{display:flex;flex-wrap:wrap;gap:10px;align-items:end;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.fld select,.fld input{font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);min-width:0;width:240px;max-width:100%}
+.fld input[type=date]{width:160px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.kpi{background:var(--surface);padding:14px 16px}
+.kpi b{display:block;font-family:var(--f-mono);font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+.kpi span{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.brief{border-left:4px solid var(--accent)}
+.brief-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;align-items:center}
+.eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);font-weight:600;margin:0}
+.brief ul,.diag ul{margin:0;padding-left:18px;display:grid;gap:6px;max-width:95ch}
+.sku-head{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:start}
+.sku-title{font-family:var(--f-mono);font-size:22px;font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.pill{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:999px;background:var(--c-bg,var(--sunk));color:var(--c,var(--muted));white-space:nowrap}
+.verdict{font-size:14px;padding:4px 12px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+.mini{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}
+.mini div{background:var(--sunk);border-radius:8px;padding:8px 10px}
+.mini b{display:block;font-family:var(--f-mono);font-size:17px;font-variant-numeric:tabular-nums}
+.mini span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.period{display:flex;flex-wrap:wrap;gap:6px;align-items:end}
+.seg{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:5px 10px;border-radius:6px;cursor:pointer}
+.seg[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.chart{width:100%;overflow-x:auto}
+.chart svg{display:block;max-width:100%}
+.chart text{fill:var(--muted);font-family:var(--f-mono);font-size:10px}
+.note{font-size:13px;color:var(--muted)}
+.ai-out{white-space:pre-wrap;background:var(--sunk);border-radius:8px;padding:12px 14px;font-size:14px}
+.tabs{display:flex;flex-wrap:wrap;gap:8px}
+.tab{font:inherit;font-weight:600;font-size:14px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:8px 14px;border-radius:999px;cursor:pointer;display:flex;gap:8px;align-items:center}
+.tab .n{font-family:var(--f-mono);font-size:12px;padding:1px 7px;border-radius:999px;background:var(--c-bg);color:var(--c)}
+.tab[aria-selected="true"]{border-color:var(--c);box-shadow:inset 0 0 0 1px var(--c)}
+.panel-head p{margin:4px 0 0;color:var(--muted);max-width:75ch}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+.tbl.wide table{min-width:960px}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+tbody tr.click{cursor:pointer}
+tbody tr.click:hover td{background:var(--sunk)}
+.sku{font-family:var(--f-mono);font-weight:600;white-space:nowrap}
+.sub{color:var(--muted);font-size:12px}
+.acao{min-width:260px;max-width:420px}
+.stripe{border-left:3px solid var(--c)}
+.c-crit{--c:var(--crit);--c-bg:var(--crit-bg)} .c-warn{--c:var(--warn);--c-bg:var(--warn-bg)}
+.c-good{--c:var(--good);--c-bg:var(--good-bg)} .c-info{--c:var(--info);--c-bg:var(--info-bg)} .c-slow{--c:var(--slow);--c-bg:var(--slow-bg)}
+.c-neutral{--c:var(--muted);--c-bg:var(--sunk)}
+.empty{padding:22px;color:var(--muted)}
+.notebox{background:var(--sunk);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.notebox textarea{font:inherit;width:100%;min-height:72px;resize:vertical;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--fg);box-sizing:border-box}
+.tagpick{display:flex;flex-wrap:wrap;gap:6px}
+.tagpick button{font:inherit;font-size:12.5px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:4px 10px;border-radius:999px;cursor:pointer}
+.tagpick button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.note-row{display:flex;flex-wrap:wrap;gap:10px;align-items:end}
+.nbox{font:inherit;font-family:var(--f-mono);font-size:10px;font-weight:600;letter-spacing:.06em;background:var(--crit);color:#fff;border:0;border-radius:3px;padding:2px 5px;margin-left:4px;vertical-align:2px;cursor:pointer}
+.nbox.due{outline:2px solid var(--warn);outline-offset:1px}
+.gate{position:fixed;inset:0;background:color-mix(in srgb,var(--bg) 88%,transparent);display:grid;place-items:center;z-index:20;padding:16px}
+.gate form{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:22px;display:flex;flex-direction:column;gap:12px;max-width:360px;width:100%}
+.gate input{font:inherit;padding:9px 11px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
+footer{color:var(--muted);font-size:12px;max-width:100ch}
+@media (max-width:640px){.hdr-actions{align-items:flex-start}.msg{text-align:left}.filters{position:static}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<style>body{margin:0}*{box-sizing:border-box}[hidden]{display:none!important}</style>
+</head>
+<body>
+<div class="gate" id="gate" hidden><form id="k-form"><h2>Radar de SKUs</h2><label class="sub" for="k-in">Senha de acesso</label><input id="k-in" type="password" autocomplete="current-password" required><button class="btn primary" type="submit">Entrar</button><div class="note" id="k-msg"></div></form></div>
+<div class="wrap">
+<header>
+  <div><h1>Radar de SKUs</h1><div class="stamp" id="stamp">Carregando dados do banco…</div></div>
+  <div class="hdr-actions">
+    <button class="btn primary" id="btn-run" type="button">Rodar análise agora</button>
+    <div class="msg" id="run-msg">Roda sozinho todo dia às 09:40. O botão lê a planilha na hora e grava o dia.</div>
+  </div>
+</header>
+
+<section class="filters" aria-label="Filtros">
+  <div class="fld"><label for="f-forn">Fornecedor</label><select id="f-forn"><option value="">Todos</option></select></div>
+  <div class="fld"><label for="f-sku">SKU</label><input id="f-sku" list="dl-sku" placeholder="Digite ou escolha um SKU" autocomplete="off"><datalist id="dl-sku"></datalist></div>
+  <button class="btn" id="btn-clear" type="button">Limpar filtros</button>
+</section>
+
+<section class="kpis" id="kpis"></section>
+
+<section class="card brief" id="brief">
+  <div class="brief-head"><p class="eyebrow">Leitura do analista</p></div>
+  <ul id="brief-list"><li class="note">A leitura aparece aqui depois da primeira análise.</li></ul>
+  <div class="note" id="brief-meta"></div>
+</section>
+
+<section class="card" id="sku-card" hidden></section>
+
+<nav class="tabs" id="tabs" role="tablist" aria-label="Alertas"></nav>
+<section id="panel" style="display:flex;flex-direction:column;gap:12px"></section>
+
+<footer>SKUs inativos ficam fora dos alertas. Cobertura = estoque WMS ÷ ritmo de venda dos últimos 7 dias. Lead de reposição: 15 dias (nacional) e 60 dias (importado). Saídas diárias: cada execução grava a coluna “Desde Ontem” da planilha como as vendas do dia anterior, então o histórico diário cresce um dia por execução a partir da primeira execução.</footer>
+</div>
+<script src="config.js"></script>
+<script>
+(()=>{
+const FILE_ID="1404SCPiabg6abXRphpHqGXQ0frRkIlUptDV9m8a-x3w", DRIVE="Google Drive", TOOL="download_file_content";
+const P={LEAD_N:15,LEAD_I:60,MIN_RUP:10,ACEL:1.6,ACEL_MIN:10,QUEDA:0.45,QUEDA_MIN:7,PAROU_MIN:8,ENC_DIAS:120,ENC_MIN:10};
+const PESO={Premium:5,Estrela:4,Potencial:3,Volume:3,"Análise":1};
+const SEC=[
+ {k:"ruptura",t:"Ruptura / repor",c:"c-crit",d:"SKUs com giro relevante que zeram antes da próxima reposição."},
+ {k:"aceleracao",t:"Vendas disparando",c:"c-good",d:"Ritmo da última semana muito acima do normal. Janela para subir preço e margem."},
+ {k:"parou",t:"Parou de vender",c:"c-warn",d:"Vendia com regularidade, tem estoque e fez zero nos últimos 7 dias."},
+ {k:"queda",t:"Queda forte",c:"c-warn",d:"Ainda vende, mas o ritmo semanal caiu mais da metade."},
+ {k:"encalhado",t:"Encalhado",c:"c-slow",d:"Estoque parado: mais de 120 dias de cobertura ou sem venda em 60 dias."},
+ {k:"divergencia",t:"Estoque divergente",c:"c-info",d:"Físico (WMS) e Anymarket não batem. Pode travar venda ou gerar cancelamento."}];
+const TAGS=["Sem estoque no fornecedor","Ponderar preço","Aguardando chegada","Não repor","Em promoção","Revisar anúncio","Liquidar"];
+const noteId=sku=>{let s=String(sku).replace(/[^A-Za-z0-9_\-~:@+]/g,c=>"_"+c.charCodeAt(0).toString(16)+"_");return s.slice(0,190)||"_"};
+const $=id=>document.getElementById(id);
+const fmt=n=>n==null||!isFinite(n)?"—":Math.round(n).toLocaleString("pt-BR");
+const fmt1=n=>n==null||!isFinite(n)?"—":n.toLocaleString("pt-BR",{maximumFractionDigits:1});
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const S={rows:[],meta:null,hist:[],alerts:null,tab:"ruptura",forn:"",sku:"",period:30,from:"",to:"",db:null,loadedStamp:null,notes:{},canWrite:true,skuHist:{},key:"",autor:""};
+try{S.tab=localStorage.getItem("radar-tab")||S.tab}catch(e){}
+if(location.hash&&SEC.some(s=>s.k===location.hash.slice(1)))S.tab=location.hash.slice(1);
+
+/* ---------- datas (fuso de São Paulo) ---------- */
+function spParts(d=new Date()){const f=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false}).formatToParts(d);const o={};f.forEach(p=>o[p.type]=p.value);return o}
+function todayISO(){const o=spParts();return `${o.year}-${o.month}-${o.day}`}
+function stampNow(){const o=spParts();return `${o.day}/${o.month}/${o.year} ${o.hour==="24"?"00":o.hour}:${o.minute}`}
+const addDays=(iso,n)=>{const d=new Date(iso+"T12:00:00Z");d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)};
+const br=iso=>iso?iso.slice(8,10)+"/"+iso.slice(5,7):"";
+
+/* ---------- análise ---------- */
+function enrich(r){
+  r.r7=r.v7/7;r.r30=r.v30/30;r.base=Math.max(r.v30-r.v7,0)/23;r.rprev=Math.max(r.v60-r.v30,0)/30;
+  const rt=r.r7>0?r.r7:r.r30;r.cob=rt>0?r.wms/rt:null;r.lead=r.imp?P.LEAD_I:P.LEAD_N;
+  r.peso=(PESO[r.classe]||0)+(r.fat==="A"?2:0)+(r.lucro==="A"?2:0);return r}
+function analyze(rows){
+  const a=rows.filter(r=>!r.inativo),out={};
+  out.ruptura=a.filter(r=>r.v30>=P.MIN_RUP&&(r.wms<=0||(r.cob!=null&&r.cob<=r.lead))).map(r=>{
+    const acel=r.base>0&&r.r7>=1.3*r.base, repor=Math.max(0,Math.round(r.r30*(r.lead+30)-r.wms));let acao;
+    if(r.wms<=0)acao=`ZERADO. Repor ~${fmt(repor)} un. Se a chegada for próxima, ativar prazo de manufatura para não perder o anúncio.`;
+    else if(r.cob<7&&acel)acao=`Ruptura em ~${Math.floor(r.cob)}d e acelerando: subir preço 5–10% para segurar o giro até a reposição (~${fmt(repor)} un).`;
+    else acao=`Cobertura ${Math.floor(r.cob)}d < lead ${r.lead}d. Pedir reposição ~${fmt(repor)} un.`;
+    return {r,x:repor,acao,score:r.v30*(1+r.peso/5)/((r.cob||0)+1)}});
+  out.aceleracao=a.filter(r=>r.v7>=P.ACEL_MIN&&r.base>0&&r.r7>=P.ACEL*r.base).map(r=>{const f=r.r7/r.base;
+    const acao=r.cob!=null&&r.cob<r.lead?`Vendas ${fmt1(f)}× acima do normal e cobertura curta (${Math.floor(r.cob)}d): subir preço 5–10% já e repor.`:`Vendas ${fmt1(f)}× acima do normal: testar +3–5% de preço (degraus de 48h) e checar se o concorrente zerou ou subiu preço.`;
+    return {r,x:f,acao,score:(r.v7-r.base*7)*(1+r.peso/5)}});
+  out.parou=a.filter(r=>r.v7===0&&(r.v30-r.v7)>=P.PAROU_MIN&&r.wms>0).map(r=>({r,x:r.base*7,
+    acao:r.any<=0?"Anymarket com 0 disponível: o estoque não está chegando aos canais. Sincronizar.":"Checar anúncio pausado ou moderado, perda de buy box/catálogo, preço vs concorrente e frete.",score:r.peso*1e4+r.base*7}));
+  out.queda=a.filter(r=>r.v7>0&&r.base*7>=P.QUEDA_MIN&&r.r7<=P.QUEDA*r.base).map(r=>{let acao;
+    if(r.any<=0&&r.wms>0)acao="Provável causa: Anymarket = 0 com estoque físico. Sincronizar antes de mexer em preço.";
+    else if(r.cob!=null&&r.cob<5)acao="Queda por falta de estoque (cobertura curta). Priorizar reposição.";
+    else acao="Investigar posição e preço vs concorrência, avaliações recentes e ads. Se for Estrela, reagir hoje.";
+    return {r,x:1-r.r7/r.base,acao,score:(r.base-r.r7)*7*(1+r.peso/5)}});
+  out.encalhado=a.filter(r=>r.wms>=P.ENC_MIN&&((r.cob!=null&&r.cob>P.ENC_DIAS)||r.v60===0)).map(r=>{let acao;
+    if(r.v6m===0)acao="Sem venda em 6 meses: liquidar a preço de custo, montar kit com item Estrela ou abrir em outro canal.";
+    else if(r.v60===0)acao="Sem venda em 60d: revisar anúncio (título, fotos, preço), cupom ou oferta relâmpago, ads de reativação.";
+    else acao=`Cobertura ~${fmt(r.cob)}d: reduzir preço 5–10% por semana e entrar em campanhas (Full, ofertas do dia).`;
+    return {r,x:null,acao,score:r.wms}});
+  out.divergencia=a.filter(r=>(r.wms>=5&&r.any<=0&&r.v60>0)||(r.any>r.wms+2&&r.any>0)).map(r=>({r,x:null,
+    acao:r.any<=0?"Estoque físico existe mas Anymarket = 0: vendas bloqueadas. Sincronizar.":"Anymarket acima do físico: conferir estoque Full ou outro CD. Se não houver, risco de venda sem estoque e cancelamento.",score:r.v30*1e4+r.wms}));
+  for(const k in out)out[k].sort((p,q)=>q.score-p.score);
+  return out}
+
+/* ---------- API (Google Apps Script) ---------- */
+const CFG=window.RADAR_CONFIG||{};
+function getKey(){try{return localStorage.getItem("radar-key")||""}catch(e){return S.key||""}}
+function setKey(k){S.key=k;try{localStorage.setItem("radar-key",k)}catch(e){}}
+async function api(action,params={},body=null){
+  if(!CFG.API_URL||/COLE_AQUI/.test(CFG.API_URL))throw{code:"config"};
+  const u=new URL(CFG.API_URL);u.searchParams.set("action",action);u.searchParams.set("key",getKey()||S.key||"");
+  for(const k in params)u.searchParams.set(k,params[k]);
+  const opt=body?{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action,key:getKey()||S.key||"",...body})}:{};
+  let res;try{res=await fetch(u.toString(),opt)}catch(e){throw{code:"rede"}}
+  let j;try{j=await res.json()}catch(e){throw{code:"resposta"}}
+  if(j&&j.erro)throw{code:j.erro,message:j.mensagem||""};return j}
+function apiErr(e){const c=e&&e.code;
+  if(c==="config")return"Falta configurar o endereço do Apps Script no arquivo config.js.";
+  if(c==="chave")return"Senha de acesso incorreta.";
+  if(c==="rede")return"Não consegui falar com o Google Apps Script. Confira a internet e se a implantação está como “Qualquer pessoa”.";
+  if(c==="resposta")return"O Apps Script respondeu algo inesperado. Confira se a implantação é “App da Web”.";
+  return"Falha no servidor: "+(e.message||c||"erro")}
+function applyData(j){S.meta=j.meta||null;const c=j.campos;S.rows=(j.rows||[]).map(a=>{const r={};c.forEach((k,i)=>r[k]=a[i]);r.inativo=!!r.inativo;r.imp=!!r.imp;return enrich(r)});
+  const m={};(j.notas||[]).forEach(n=>{if(n&&n.sku)m[n.sku]=n});S.notes=m;S.skuHist={};fillFilters();render()}
+async function loadAll(){$("stamp").textContent="Carregando a planilha…";applyData(await api("data"))}
+/* ---------- filtros ---------- */
+function fillFilters(){
+  const forn=[...new Set(S.rows.map(r=>r.forn).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+  const sel=$("f-forn"),cur=S.forn;sel.innerHTML='<option value="">Todos</option>'+forn.map(f=>`<option ${f===cur?"selected":""}>${esc(f)}</option>`).join("");
+  fillSkuList()}
+function fillSkuList(){const list=S.rows.filter(r=>!S.forn||r.forn===S.forn).filter(r=>!r.inativo||r.v12m>0).sort((a,b)=>b.v30-a.v30).slice(0,3000);
+  $("dl-sku").innerHTML=list.map(r=>`<option value="${esc(r.sku)}">${esc(r.forn)}${r.classe&&r.classe!=="-"?" · "+esc(r.classe):""}</option>`).join("")}
+function scoped(){const q=S.sku.trim().toLowerCase();return S.rows.filter(r=>(!S.forn||r.forn===S.forn)&&(!q||r.sku.toLowerCase().includes(q)))}
+
+/* ---------- render ---------- */
+function render(){
+  const m=S.meta;
+  if(m)$("stamp").textContent=`Planilha “Fluxo de saída por SKU” · dados de ${m.stamp}${m.ultima?` · último registro diário ${m.ultima} (${m.fonte==="manual"?"manual":"automático"})`:" · ainda sem registro diário: clique em Rodar análise agora"}`;
+  const rows=scoped();S.alerts=analyze(rows);
+  const act=rows.filter(r=>!r.inativo),sum=k=>act.reduce((s,r)=>s+r[k],0);
+  const v7=sum("v7"),v30=sum("v30"),rit=v30?((v7/7)/(v30/30)-1)*100:0;
+  $("kpis").innerHTML=[["Vendas ontem",fmt(sum("d1"))],["Vendas 7 dias",fmt(v7)],["Ritmo 7d vs 30d",(rit>0?"+":"")+fmt1(rit)+"%"],
+    ["SKUs ativos",fmt(act.length)],["Rupturas",fmt(S.alerts.ruptura.length)],["Un. encalhadas",fmt(S.alerts.encalhado.reduce((s,a)=>s+a.r.wms,0))]]
+    .map(([a,b])=>`<div class="kpi"><b>${b}</b><span>${a}${S.forn||S.sku?" (filtro)":""}</span></div>`).join("");
+  renderBrief();renderTabs();renderPanel();renderSku()}
+function autoBrief(){const all=analyze(S.rows),L=[],est=a=>a.r.peso>=6;
+  const act=S.rows.filter(r=>!r.inativo),v7=act.reduce((s,r)=>s+r.v7,0),v30=act.reduce((s,r)=>s+r.v30,0);
+  if(v30){const rit=((v7/7)/(v30/30)-1)*100;L.push(`Ritmo geral da última semana ${rit>=0?"+":""}${fmt1(rit)}% vs média de 30 dias (${fmt(v7)} un em 7d).`)}
+  const rup=all.ruptura.filter(est).slice(0,3);if(rup.length)L.push("Ruptura em SKUs de alto impacto: "+rup.map(a=>`${a.r.sku} (${a.r.wms<=0?"zerado":fmt(a.r.cob)+"d de cobertura"}, ${fmt(a.r.v7)} un/sem)`).join("; ")+". Repor e, se não houver chegada rápida, segurar o giro pelo preço.");
+  const trav=all.divergencia.filter(a=>a.r.any<=0);if(trav.length)L.push(`Vendas travadas: ${trav.length} SKUs com estoque físico e Anymarket = 0 (${fmt(trav.reduce((s,a)=>s+a.r.v30,0))} un em 30d), ex.: ${trav.slice(0,4).map(a=>a.r.sku).join(", ")}. Sincronizar antes de mexer em preço.`);
+  const up=all.aceleracao.filter(a=>a.r.cob!=null&&a.r.cob<a.r.lead).slice(0,4);if(up.length)L.push("Subir preço 5–10%: "+up.map(a=>`${a.r.sku} (${fmt1(a.x)}×, ${fmt(a.r.cob)}d)`).join(", ")+" aceleram com estoque curto.");
+  const t=all.aceleracao.filter(a=>!(a.r.cob!=null&&a.r.cob<a.r.lead)).slice(0,3);if(t.length)L.push("Testar +3–5%: "+t.map(a=>`${a.r.sku} (${fmt1(a.x)}×)`).join(", ")+" vendem bem acima do normal com estoque folgado.");
+  const q=all.queda.filter(a=>a.r.any>0&&!(a.r.cob!=null&&a.r.cob<5)).slice(0,3);if(q.length)L.push("Queda a investigar: "+q.map(a=>`${a.r.sku} (−${Math.round(a.x*100)}%)`).join(", ")+". Checar preço do concorrente, posição e avaliações.");
+  const due=Object.values(S.notes).filter(n=>n.lembrar&&n.lembrar<=todayISO());if(due.length)L.push(`Anotações para revisar hoje: ${due.slice(0,6).map(n=>n.sku).join(", ")}${due.length>6?"…":""}.`);
+  if(all.encalhado.length)L.push(`Estoque parado: ${fmt(all.encalhado.reduce((s,a)=>s+a.r.wms,0))} un em ${all.encalhado.length} SKUs. Maiores: ${all.encalhado.slice(0,3).map(a=>`${a.r.sku} (${fmt(a.r.wms)} un)`).join(", ")}.`);
+  return L}
+function renderBrief(){const b=S.rows.length?autoBrief():[];
+  $("brief-list").innerHTML=b.length?b.map(l=>`<li>${esc(l)}</li>`).join(""):'<li class="note">A leitura aparece aqui quando os dados carregarem.</li>';
+  $("brief-meta").textContent=b.length?"Gerada automaticamente com todos os SKUs, sem filtro.":""}
+function notesList(){const q=S.sku.trim().toLowerCase();return Object.values(S.notes).filter(n=>n&&(n.texto||(n.tags&&n.tags.length))).filter(n=>{const r=S.rows.find(x=>x.sku===n.sku);return(!S.forn||(r&&r.forn===S.forn))&&(!q||n.sku.toLowerCase().includes(q))}).sort((a,b)=>(a.lembrar||"9999")<(b.lembrar||"9999")?-1:(a.lembrar||"9999")>(b.lembrar||"9999")?1:(b.atualizado||"").localeCompare(a.atualizado||""))}
+function renderTabs(){$("tabs").innerHTML=SEC.map(s=>`<button class="tab ${s.c}" role="tab" aria-selected="${s.k===S.tab}" data-k="${s.k}">${s.t}<span class="n">${S.alerts[s.k].length}</span></button>`).join("")+
+  `<button class="tab c-neutral" role="tab" aria-selected="${S.tab==="notas"}" data-k="notas">Anotações<span class="n">${notesList().length}</span></button>`}
+function noteTag(sku){const n=S.notes[sku];if(!n||!(n.texto||(n.tags&&n.tags.length)))return"";const due=n.lembrar&&n.lembrar<=todayISO();
+  const t=[(n.tags||[]).join(" · "),n.texto].filter(Boolean).join(" — ");return `<button type="button" class="nbox${due?" due":""}" data-open="${esc(sku)}" title="${esc(t)}">${due?"REVISAR":"NOTA"}</button>`}
+const XH={ruptura:"Repor",aceleracao:"Aceleração",parou:"Perda/sem.",queda:"Queda"};
+function xval(k,a){if(k==="ruptura")return fmt(a.x);if(k==="aceleracao")return fmt1(a.x)+"×";if(k==="parou")return fmt(a.x);if(k==="queda")return "−"+Math.round(a.x*100)+"%";return ""}
+function skuCells(r){return `<td class="stripe"><div class="sku">${esc(r.sku)} ${noteTag(r.sku)}</div><div class="sub">${esc(r.forn)}${r.cat?" · "+esc(r.cat):""}${r.imp?" · importado":""}</div></td>
+ <td><span class="pill">${esc(r.classe&&r.classe!=="-"?r.classe:"Sem curva")}</span><div class="sub">Fat/Lucro/Vol ${esc(r.fat||"-")}/${esc(r.lucro||"-")}/${esc(r.vol||"-")}</div></td>
+ <td class="num">${fmt(r.wms)}</td><td class="num">${fmt(r.any)}</td><td class="num">${fmt(r.d1)}</td><td class="num">${fmt(r.v7)}</td><td class="num">${fmt(r.v30)}</td><td class="num">${fmt(r.v60)}</td><td class="num">${r.cob==null?"—":fmt(r.cob)+"d"}</td>`}
+function renderNotesPanel(){const list=notesList();
+  $("panel").innerHTML=`<div class="panel-head"><h2>Anotações</h2><p>O que ficou combinado para cada SKU. As com data de revisão vencida aparecem primeiro. Clique para abrir o SKU.</p></div>
+  <div class="tbl wide"><table><thead><tr><th>SKU</th><th>Marcadores</th><th>Anotação</th><th>Revisar em</th><th class="num">Estoque</th><th class="num">7d</th><th class="num">30d</th><th>Atualizada</th></tr></thead><tbody>
+  ${list.length?list.map(n=>{const r=S.rows.find(x=>x.sku===n.sku)||{};const due=n.lembrar&&n.lembrar<=todayISO();return `<tr class="click ${due?"c-crit":"c-neutral"}" data-sku="${esc(n.sku)}" tabindex="0"><td class="stripe"><div class="sku">${esc(n.sku)}</div><div class="sub">${esc(r.forn||"")}</div></td>
+   <td>${(n.tags||[]).map(t=>`<span class="pill c-info">${esc(t)}</span>`).join(" ")}</td><td class="acao">${esc(n.texto||"")}</td>
+   <td>${n.lembrar?`<span class="pill ${due?"c-crit":"c-neutral"}">${br(n.lembrar)}/${n.lembrar.slice(0,4)}</span>`:"—"}</td>
+   <td class="num">${fmt(r.wms)}</td><td class="num">${fmt(r.v7)}</td><td class="num">${fmt(r.v30)}</td><td class="sub">${esc(n.atualizado||"")}</td></tr>`}).join(""):`<tr><td colspan="8" class="empty">Nenhuma anotação ainda. Abra um SKU e escreva o que foi decidido.</td></tr>`}
+  </tbody></table></div>`}
+function renderPanel(){if(S.tab==="notas")return renderNotesPanel();const s=SEC.find(x=>x.k===S.tab),list=S.alerts[S.tab],xh=XH[S.tab],shown=list.slice(0,150);
+  $("panel").innerHTML=`<div class="panel-head"><h2>${s.t}</h2><p>${s.d} Clique num SKU para abrir a análise dele.</p></div>
+  <div class="tbl wide"><table><thead><tr><th>SKU</th><th>Perfil</th><th class="num">Estoque</th><th class="num">Anymkt</th><th class="num">Ontem</th><th class="num">7d</th><th class="num">30d</th><th class="num">60d</th><th class="num">Cobert.</th>${xh?`<th class="num">${xh}</th>`:""}<th>O que fazer</th></tr></thead><tbody>
+  ${shown.length?shown.map(a=>`<tr class="click ${s.c}" data-sku="${esc(a.r.sku)}" tabindex="0">${skuCells(a.r)}${xh?`<td class="num">${xval(S.tab,a)}</td>`:""}<td class="acao">${esc(a.acao)}</td></tr>`).join(""):`<tr><td colspan="11" class="empty">${S.rows.length?"Nenhum SKU neste alerta com os filtros atuais.":"Sem dados ainda."}</td></tr>`}
+  </tbody></table></div>${list.length>150?`<div class="note">Mostrando 150 de ${list.length}. Filtre por fornecedor para ver o restante.</div>`:""}`}
+
+/* ---------- análise por SKU ---------- */
+function findSku(){const q=S.sku.trim().toLowerCase();if(!q)return null;return S.rows.find(r=>r.sku.toLowerCase()===q)||null}
+function dailySeries(sku){
+  const h=S.skuHist[sku];if(!h||!h.length)return[];const pts=h.map(x=>({dia:x[0],v:x[1],est:x[2]}));
+  let from=S.from,to=S.to;const last=pts[pts.length-1].dia;
+  if(!from&&!to){to=last;from=S.period?addDays(last,-(S.period-1)):pts[0].dia}
+  from=from||pts[0].dia;to=to||last;const map=new Map(pts.map(p=>[p.dia,p]));const out=[];
+  for(let d=from;d<=to;d=addDays(d,1)){out.push(map.get(d)||{dia:d,v:null,est:null});if(out.length>400)break}return out}
+async function loadSkuHist(sku){if(S.skuHist[sku]!==undefined)return;S.skuHist[sku]=null;
+  try{const j=await api("sku",{sku});S.skuHist[sku]=j.dias||[];S.histStart=j.inicio||S.histStart}catch(e){S.skuHist[sku]=[]}
+  if(findSku()&&findSku().sku===sku&&!S.draft)renderSku()}
+function barChart(pts){
+  if(!pts.length)return'<div class="empty">Sem dias gravados neste período.</div>';
+  const W=Math.max(560,pts.length*18),H=200,L=36,B=24,T=10,iw=W-L-8,ih=H-B-T;
+  const mx=Math.max(1,...pts.map(p=>p.v||0));const nice=Math.ceil(mx/4)||1,top=nice*4;
+  const bw=iw/pts.length,y=v=>T+ih-(v/top)*ih;let g="";
+  for(let i=0;i<=4;i++){const v=nice*i,yy=y(v);g+=`<line x1="${L}" x2="${W-8}" y1="${yy}" y2="${yy}" stroke="var(--line)"/><text x="${L-6}" y="${yy+3}" text-anchor="end">${fmt(v)}</text>`}
+  const every=Math.ceil(pts.length/14);
+  pts.forEach((p,i)=>{const x=L+i*bw;
+    if(p.v!=null){const h=Math.max(1,(p.v/top)*ih);g+=`<rect x="${x+bw*0.15}" y="${T+ih-h}" width="${bw*0.7}" height="${h}" rx="2" fill="var(--bar)"><title>${br(p.dia)}: ${fmt(p.v)} un${p.est!=null?" · estoque "+fmt(p.est):""}</title></rect>`}
+    else g+=`<rect x="${x+bw*0.15}" y="${T+ih-2}" width="${bw*0.7}" height="2" fill="var(--line)"><title>${br(p.dia)}: sem registro</title></rect>`;
+    if(i%every===0)g+=`<text x="${x+bw/2}" y="${H-8}" text-anchor="middle">${br(p.dia)}</text>`});
+  const vals=pts.map(p=>p.v);let path="";vals.forEach((v,i)=>{const win=vals.slice(Math.max(0,i-6),i+1).filter(x=>x!=null);if(win.length>=3){const m=win.reduce((a,b)=>a+b,0)/win.length;path+=(path?"L":"M")+(L+i*bw+bw/2)+","+y(m)}});
+  if(path)g+=`<path d="${path}" fill="none" stroke="var(--warn)" stroke-width="2"/>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Saídas diárias">${g}</svg>`}
+function windowChart(r){
+  const w=[["Ontem",r.d1],["2–7d",(r.v7-r.d1)/6],["8–30d",(r.v30-r.v7)/23],["31–60d",(r.v60-r.v30)/30],["61–180d",(r.v6m-r.v60)/120],["181–365d",(r.v12m-r.v6m)/185]].map(([k,v])=>[k,Math.max(0,v)]).reverse();
+  const W=560,H=190,L=36,B=24,T=12,iw=W-L-8,ih=H-B-T,mx=Math.max(0.1,...w.map(x=>x[1])),top=mx*1.15,bw=iw/w.length;let g="";
+  w.forEach(([k,v],i)=>{const h=(v/top)*ih,x=L+i*bw;g+=`<rect x="${x+bw*0.18}" y="${T+ih-h}" width="${bw*0.64}" height="${Math.max(1,h)}" rx="3" fill="${i>=4?"var(--bar)":"var(--bar2)"}"/><text x="${x+bw/2}" y="${T+ih-h-4}" text-anchor="middle" style="fill:var(--fg)">${fmt1(v)}</text><text x="${x+bw/2}" y="${H-8}" text-anchor="middle">${k}</text>`});
+  g+=`<line x1="${L}" x2="${W-8}" y1="${T+ih}" y2="${T+ih}" stroke="var(--line)"/>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Média diária por período">${g}</svg>`}
+function diagnose(r){
+  const d=[],acts=[];let verdict=["Manter preço","c-neutral"];
+  const tr=r.base>0?(r.r7/r.base-1)*100:null, tr30=r.rprev>0?(r.r30/r.rprev-1)*100:null;
+  const old=(r.v12m-r.v6m)/185, mid=(r.v60-r.v30)/30;
+  if(r.inativo)d.push("SKU marcado como inativo na planilha.");
+  d.push(`Ritmo atual: ${fmt1(r.r7)} un/dia na última semana, contra ${fmt1(r.base)} un/dia nos 23 dias anteriores${tr!=null?` (${tr>0?"+":""}${fmt(tr)}%)`:""}.`);
+  if(tr30!=null)d.push(`Últimos 30 dias vs 30 dias anteriores: ${tr30>0?"+":""}${fmt(tr30)}% (${fmt(r.v30)} vs ${fmt(r.v60-r.v30)} un).`);
+  if(old>0&&mid>0&&(old/mid>1.8||mid/old>1.8))d.push(`Há 6–12 meses vendia ${fmt1(old)} un/dia, hoje ${fmt1(r.r30)}. ${old>mid?"Perdeu força: pode ser sazonalidade ou perda de posição.":"Cresceu bem acima do histórico."}`);
+  if(r.cob!=null){const fim=addDays(todayISO(),Math.floor(r.cob));d.push(`Estoque WMS ${fmt(r.wms)} un cobre ~${fmt(r.cob)} dias: zera por volta de ${br(fim)}. Lead de reposição: ${r.lead} dias${r.imp?" (importado)":""}.`)}
+  else if(r.wms>0)d.push(`Estoque de ${fmt(r.wms)} un sem venda recente: cobertura indefinida.`);
+  else d.push("Sem estoque WMS.");
+  if(r.any<=0&&r.wms>0){acts.push("Sincronizar o Anymarket: há estoque físico, mas 0 disponível nos canais. Qualquer queda de venda aqui é travamento, não demanda.");verdict=["Sincronizar estoque","c-info"]}
+  else if(r.any>r.wms+2)acts.push(`Anymarket mostra ${fmt(r.any)} un e o WMS ${fmt(r.wms)}. Confirmar se há estoque no Full/outro CD antes de vender além do físico.`);
+  const repor=Math.max(0,Math.round(r.r30*(r.lead+30)-r.wms));
+  if(r.v30>=P.MIN_RUP&&(r.wms<=0||(r.cob!=null&&r.cob<=r.lead))){acts.push(`Pedir reposição de ~${fmt(repor)} un (cobre lead + 30 dias no ritmo atual).`);if(verdict[0]==="Manter preço")verdict=["Repor urgente","c-crit"]}
+  if(r.base>0&&r.r7>=1.3*r.base&&r.cob!=null&&r.cob<r.lead){acts.push("Subir preço 5–10% agora: a demanda está acima do normal e o estoque não aguenta até a reposição. Isso protege margem e evita zerar e perder ranking.");verdict=["Subir preço 5–10%","c-good"]}
+  else if(r.base>0&&r.r7>=P.ACEL*r.base&&r.v7>=P.ACEL_MIN){acts.push("Testar +3–5% no preço em degraus de 48h e acompanhar conversão. Verificar se um concorrente zerou estoque ou subiu preço.");verdict=["Testar +3–5%","c-good"]}
+  else if(r.wms>=P.ENC_MIN&&((r.cob!=null&&r.cob>P.ENC_DIAS)||r.v60===0)){acts.push(r.v6m===0?"Liquidar: sem venda há 6 meses. Preço de custo, kit com item Estrela ou outro canal.":"Reduzir preço 5–10% por semana até a cobertura cair abaixo de 90 dias. Entrar em ofertas do dia/relâmpago e avaliar Full.");verdict=[r.v6m===0?"Liquidar":"Reduzir preço","c-slow"]}
+  else if(r.base*7>=P.QUEDA_MIN&&r.r7<=P.QUEDA*r.base&&r.any>0&&!(r.cob!=null&&r.cob<5)){acts.push("Comparar preço e frete com os 3 primeiros concorrentes do anúncio. Se estiver acima, reduzir 3–5%. Conferir perguntas e avaliações recentes e se o anúncio perdeu buy box.");verdict=["Revisar preço vs concorrência","c-warn"]}
+  else if(r.v7===0&&r.v30-r.v7>=P.PAROU_MIN&&r.wms>0&&r.any>0){acts.push("Conferir se o anúncio está ativo em todos os canais (pausado, moderado ou sem estoque no Full).");verdict=["Verificar anúncio","c-warn"]}
+  const nt=S.notes[r.sku],tg=(nt&&nt.tags)||[];
+  if(tg.includes("Sem estoque no fornecedor")&&(r.wms<=0||(r.cob!=null&&r.cob<=r.lead))){for(let i=acts.length-1;i>=0;i--)if(/^(Pedir reposição|Subir preço 5–10% agora)/.test(acts[i]))acts.splice(i,1);acts.unshift("Anotado: fornecedor sem estoque. Não conte com reposição: subir preço 10–15% para esticar o estoque atual e buscar fornecedor alternativo ou similar para indicar no anúncio.");verdict=["Esticar estoque via preço","c-crit"]}
+  if(tg.includes("Não repor")){for(let i=acts.length-1;i>=0;i--)if(acts[i].startsWith("Pedir reposição"))acts.splice(i,1);acts.push("Anotado: não repor. Deixar o estoque girar até zerar e então pausar ou encerrar o anúncio.")}
+  if(tg.includes("Aguardando chegada")&&(r.wms<=0||(r.cob!=null&&r.cob<=r.lead)))acts.unshift("Anotado: aguardando chegada. Confirmar a data com o fornecedor; se passar da cobertura atual, subir preço para não zerar antes.");
+  if(nt&&nt.lembrar&&nt.lembrar<=todayISO())acts.unshift(`Revisão agendada para ${br(nt.lembrar)} chegou: releia a anotação e decida se mantém.`);
+  if(!acts.length)acts.push("Nada urgente. Manter preço e acompanhar o ritmo semanal.");
+  if(r.peso>=6)d.push(`SKU de alto impacto (${r.classe}, curva ${r.fat}/${r.lucro}/${r.vol}): tratar primeiro.`);
+  return {d,acts,verdict,repor}}
+function noteBox(r){const st=S.notes[r.sku]||{},n=S.draft&&S.draft.sku===r.sku?{...st,...S.draft}:st,tags=n.tags||[],due=st.lembrar&&st.lembrar<=todayISO();
+  return `<div class="notebox" id="notebox" data-sku="${esc(r.sku)}"><div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:baseline"><h2 style="font-size:16px">Anotações do SKU</h2><span class="note">${st.atualizado?`Última edição ${esc(st.atualizado)}${st.por?" por "+esc(st.por):""}`:"Nada anotado ainda."}${S.draft&&S.draft.sku===r.sku?" · alterações não salvas":""}${due?' · <b style="color:var(--crit)">data de revisão chegou</b>':""}</span></div>
+   <div class="tagpick" id="n-tags">${TAGS.map(t=>`<button type="button" data-tag="${esc(t)}" aria-pressed="${tags.includes(t)}">${esc(t)}</button>`).join("")}</div>
+   <label class="sub" for="n-text">O que foi decidido / o que fazer da próxima vez</label>
+   <textarea id="n-text" placeholder="Ex.: fornecedor sem estoque até 15/10, subir 8% para segurar giro e voltar preço na chegada.">${esc(n.texto||"")}</textarea>
+   <div class="note-row"><div class="fld"><label for="n-date">Revisar em</label><input type="date" id="n-date" value="${esc(n.lembrar||"")}"></div><div class="fld"><label for="n-autor">Seu nome</label><input id="n-autor" value="${esc(S.autor)}" style="width:160px"></div>
+   <button class="btn primary" type="button" id="n-save" ${S.canWrite?"":"disabled"}>Salvar anotação</button>${st.atualizado?`<button class="btn" type="button" id="n-del" ${S.canWrite?"":"disabled"}>Apagar</button>`:""}<span class="note" id="n-msg">${S.canWrite?"":"Você só pode ler as anotações neste Radar."}</span></div></div>`}
+function captureDraft(){const box=$("notebox");if(!box)return;S.draft={sku:box.dataset.sku,tags:[...box.querySelectorAll("#n-tags button[aria-pressed=true]")].map(b=>b.dataset.tag),texto:$("n-text").value,lembrar:$("n-date").value}}
+async function saveNote(del){const box=$("notebox");if(!box)return;const sku=box.dataset.sku,msg=$("n-msg");
+  const tags=[...box.querySelectorAll("#n-tags button[aria-pressed=true]")].map(b=>b.dataset.tag),texto=$("n-text").value.trim(),lembrar=$("n-date").value,por=$("n-autor").value.trim();
+  S.autor=por;try{localStorage.setItem("radar-autor",por)}catch(e){}
+  const apagar=del||(!texto&&!tags.length&&!lembrar);msg.textContent="Salvando…";
+  try{const j=await api("nota",{},{sku,tags,texto,lembrar,por,apagar,atualizado:stampNow()});const m={};(j.notas||[]).forEach(n=>{if(n&&n.sku)m[n.sku]=n});S.notes=m;S.draft=null;
+    renderTabs();renderPanel();renderSku();const mm=$("n-msg");if(mm)mm.textContent=apagar?"Anotação apagada.":"Anotação salva."}
+  catch(e){msg.textContent=apiErr(e);if(e.code==="chave")askKey()}}
+function renderSku(){
+  const r=findSku(),card=$("sku-card");if(!r){card.hidden=true;return}card.hidden=false;
+  const g=diagnose(r),pts=dailySeries(r.sku),days=pts.filter(p=>p.v!=null),tot=days.reduce((s,p)=>s+p.v,0);
+  const inAlerts=SEC.filter(s=>S.alerts[s.k].some(a=>a.r===r));
+  const periods=[[7,"7 dias"],[15,"15 dias"],[30,"30 dias"],[60,"60 dias"],[90,"90 dias"],[0,"Tudo"]];
+  card.innerHTML=`<div class="sku-head"><div><p class="eyebrow">Análise do SKU</p><div class="sku-title">${esc(r.sku)} ${noteTag(r.sku)}</div><div class="sub">${esc(r.forn)}${r.cat?" · "+esc(r.cat):""}${r.imp?" · importado":""} · ${esc(r.classe&&r.classe!=="-"?r.classe:"sem curva")} · Fat/Lucro/Vol ${esc(r.fat||"-")}/${esc(r.lucro||"-")}/${esc(r.vol||"-")}</div></div>
+   <div class="chips"><span class="pill verdict ${g.verdict[1]}">${esc(g.verdict[0])}</span>${inAlerts.map(s=>`<span class="pill ${s.c}">${s.t}</span>`).join("")}</div></div>
+  ${noteBox(r)}
+  <div class="mini"><div><b>${fmt(r.wms)}</b><span>Estoque WMS</span></div><div><b>${fmt(r.any)}</b><span>Anymarket</span></div><div><b>${fmt(r.d1)}</b><span>Ontem</span></div><div><b>${fmt(r.v7)}</b><span>7 dias</span></div><div><b>${fmt(r.v30)}</b><span>30 dias</span></div><div><b>${fmt(r.v60)}</b><span>60 dias</span></div><div><b>${fmt(r.v6m)}</b><span>6 meses</span></div><div><b>${fmt(r.v12m)}</b><span>12 meses</span></div><div><b>${r.cob==null?"—":fmt(r.cob)+"d"}</b><span>Cobertura</span></div></div>
+  <div class="grid2">
+   <div class="diag" style="display:flex;flex-direction:column;gap:8px;min-width:0"><h2 style="font-size:16px">O que fazer</h2><ul>${g.acts.map(a=>`<li><b>${esc(a)}</b></li>`).join("")}</ul><h2 style="font-size:16px">Leitura</h2><ul>${g.d.map(a=>`<li>${esc(a)}</li>`).join("")}</ul></div>
+   <div style="display:flex;flex-direction:column;gap:6px;min-width:0"><h2 style="font-size:16px">Média diária por período</h2><div class="chart">${windowChart(r)}</div><div class="note">Unidades por dia em cada faixa, da mais antiga (esquerda) até ontem. Mostra se o SKU está ganhando ou perdendo força.</div></div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:8px">
+   <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;align-items:end"><h2 style="font-size:16px">Saídas diárias</h2>
+    <div class="period">${periods.map(([n,l])=>`<button class="seg" data-p="${n}" aria-pressed="${!S.from&&!S.to&&S.period===n}">${l}</button>`).join("")}
+     <div class="fld"><label for="p-from">De</label><input type="date" id="p-from" value="${S.from}"></div><div class="fld"><label for="p-to">Até</label><input type="date" id="p-to" value="${S.to}"></div></div></div>
+   <div class="chart">${barChart(pts)}</div>
+   <div class="note">${days.length?`${days.length} dia(s) com registro no período · total ${fmt(tot)} un · média ${fmt1(tot/days.length)} un/dia · pico ${fmt(Math.max(...days.map(p=>p.v)))} un. A linha laranja é a média móvel de 7 dias.`:"Ainda não há dias gravados neste período."} ${S.skuHist[r.sku]===null?"Carregando histórico…":"O histórico diário começa em "+(S.histStart?br(S.histStart):"—")+" e ganha um dia a cada execução."}</div>
+   ${days.length?`<div class="tbl"><table><thead><tr><th>Dia</th><th class="num">Saídas</th><th class="num">Estoque no dia</th></tr></thead><tbody>${[...days].reverse().slice(0,60).map(p=>`<tr><td>${br(p.dia)}/${p.dia.slice(0,4)}</td><td class="num">${fmt(p.v)}</td><td class="num">${fmt(p.est)}</td></tr>`).join("")}</tbody></table></div>`:""}
+  </div>`;
+  loadSkuHist(r.sku)}
+
+/* ---------- rodar agora ---------- */
+async function runNow(){const btn=$("btn-run"),msg=$("run-msg");btn.disabled=true;msg.className="msg";msg.textContent="Lendo a planilha e gravando o dia…";
+  try{applyData(await api("run",{},{}));msg.textContent=`Pronto: ${fmt(S.rows.length)} SKUs atualizados às ${stampNow().slice(11)}.`}
+  catch(e){msg.className="msg err";msg.textContent=apiErr(e);if(e.code==="chave")askKey()}finally{btn.disabled=false}}
+function askKey(){$("gate").hidden=false;$("k-in").focus()}
+/* ---------- eventos ---------- */
+$("tabs").onclick=e=>{const b=e.target.closest(".tab");if(!b)return;S.tab=b.dataset.k;try{localStorage.setItem("radar-tab",S.tab)}catch(e){}renderTabs();renderPanel()};
+$("panel").addEventListener("click",e=>{const nb=e.target.closest("[data-open]");if(nb){e.stopPropagation();S.sku=nb.dataset.open;$("f-sku").value=S.sku;render();$("notebox")&&$("notebox").scrollIntoView({block:"center"});return}const tr=e.target.closest("tr[data-sku]");if(!tr)return;S.sku=tr.dataset.sku;$("f-sku").value=S.sku;render();$("sku-card").scrollIntoView({behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth",block:"start"})});
+$("panel").addEventListener("keydown",e=>{if(e.key==="Enter"){const tr=e.target.closest("tr[data-sku]");if(tr)tr.click()}});
+$("f-forn").onchange=e=>{S.forn=e.target.value;if(S.sku&&findSku()&&findSku().forn!==S.forn&&S.forn)S.sku="",$("f-sku").value="";fillSkuList();render()};
+let tmr;$("f-sku").oninput=e=>{clearTimeout(tmr);tmr=setTimeout(()=>{S.sku=e.target.value;render()},200)};
+$("btn-clear").onclick=()=>{S.forn="";S.sku="";S.from="";S.to="";$("f-forn").value="";$("f-sku").value="";fillSkuList();render()};
+$("sku-card").addEventListener("click",e=>{const t=e.target.closest("#n-tags button");if(t){t.setAttribute("aria-pressed",t.getAttribute("aria-pressed")==="true"?"false":"true");captureDraft();return}
+  if(e.target.id==="n-save"){saveNote(false);return}if(e.target.id==="n-del"){saveNote(true);return}
+  const b=e.target.closest(".seg");if(b){S.period=+b.dataset.p;S.from="";S.to="";renderSku();return}if(e.target.id==="btn-ai")aiSku()});
+$("sku-card").addEventListener("input",e=>{if(e.target.closest("#notebox"))captureDraft()});
+$("sku-card").addEventListener("change",e=>{if(e.target.id==="n-date")captureDraft();if(e.target.id==="p-from")S.from=e.target.value;if(e.target.id==="p-to")S.to=e.target.value;if(e.target.id==="p-from"||e.target.id==="p-to")renderSku()});
+$("btn-run").onclick=runNow;
+
+/* ---------- início ---------- */
+$("k-form").addEventListener("submit",async e=>{e.preventDefault();const k=$("k-in").value.trim();if(!k)return;setKey(k);$("k-msg").textContent="Conferindo…";
+  try{await loadAll();$("gate").hidden=true;$("k-msg").textContent=""}catch(err){$("k-msg").textContent=apiErr(err)}});
+try{S.autor=localStorage.getItem("radar-autor")||""}catch(e){}
+render();
+(async()=>{try{await loadAll()}catch(e){if(e.code==="chave")askKey();$("stamp").textContent=apiErr(e)}})();
+})();
+</script>
+</body>
+</html>
